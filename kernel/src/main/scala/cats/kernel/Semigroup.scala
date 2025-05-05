@@ -112,15 +112,27 @@ trait Semigroup[@sp(Int, Long, Float, Double) A] extends Any with Serializable {
       def combine(a: A, b: A): A = self.combine(b, a)
       // a + a + a + ... is the same when reversed
       override def combineN(a: A, n: Int): A = self.combineN(a, n)
-      override def reverse = self
+      override def reverse: Semigroup[A] = self
     }
 
   /**
    * Between each pair of elements insert middle
    * This name matches the term used in Foldable and Reducible and a similar Haskell function.
    */
-  def intercalate(middle: A): Semigroup[A] =
-    (a, b) => self.combine(a, self.combine(middle, b))
+  def intercalate(middle: A): Semigroup[A] = new Semigroup[A] {
+    def combine(x: A, y: A): A = self.combine(x, self.combine(middle, y))
+
+    override protected[this] def repeatedCombineN(a: A, n: Int): A = {
+      if (n == 1) a
+      else self.combine(a, self.combineN(self.combine(middle, a), n - 1))
+    }
+
+    override def combineAllOption(as: IterableOnce[A]): Option[A] = {
+      val iterator = as.iterator
+      for (head <- iterator.nextOption())
+        yield Semigroup.maybeCombine(head, self.combineAllOption(iterator.map(self.combine(middle, _))))(self)
+    }
+  }
 }
 
 abstract class SemigroupFunctions[S[T] <: Semigroup[T]] {
